@@ -1,0 +1,69 @@
+pipeline{
+    agent any
+    stages{
+        stage('Compile'){
+            steps{
+                sh 'python3 -m py_compile add.py driver.py'
+            }
+        }
+
+        stage('Test'){
+            steps{
+                sh 'python3 -m pytest --verbose --junit-xml result.xml test.py'
+            }
+            post{
+                always{
+                    junit testResults: 'result.xml', skipPublishingChecks: true
+                }
+            }
+        }
+
+        stage('Build Standalone'){
+            environment{
+                WAY = '/home/shreyash/.local/bin/'
+            }
+            steps{
+                sh '${WAY}pyinstaller --onefile driver.py'
+            }
+            post{
+                success{
+                    archiveArtifacts 'dist/driver'
+                }
+            }
+        }
+
+        stage('Upload Artifact to artifactory'){
+            environment{
+                CI = true
+                ACCESS_TOKEN = credentials('artifactory_access_token')
+                PASS = credentials('artifactory_passowrd')
+            }
+            steps{
+                sh 'curl -uadmin:${PASS} -T dist/driver "http://localhost:8081/artifactory/python-app/"'
+            }
+            post{
+                success{
+                    echo 'Succefully uploaded to jfrog artifact'
+                }
+            }
+        }
+
+        stage('Build Docker Image'){
+            steps{
+                sh 'docker build -t driver .'
+            }
+            post{
+                success{
+                    echo 'Succefully builed docker image'
+                }
+            }
+        }
+
+        stage('Run Docker Container'){
+            steps{
+                sh 'docker run driver'
+            }
+        }
+
+    }
+}
